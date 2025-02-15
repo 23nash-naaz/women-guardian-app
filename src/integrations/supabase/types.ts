@@ -42,6 +42,69 @@ export type Database = {
         }
         Relationships: []
       }
+      route_safety_points: {
+        Row: {
+          created_at: string | null
+          id: string
+          incident_count: number | null
+          last_updated: string | null
+          latitude: number
+          longitude: number
+          safety_score: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          incident_count?: number | null
+          last_updated?: string | null
+          latitude: number
+          longitude: number
+          safety_score: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          incident_count?: number | null
+          last_updated?: string | null
+          latitude?: number
+          longitude?: number
+          safety_score?: number
+        }
+        Relationships: []
+      }
+      safety_incidents: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          incident_type: string
+          latitude: number
+          longitude: number
+          reported_by: string | null
+          verified: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          incident_type: string
+          latitude: number
+          longitude: number
+          reported_by?: string | null
+          verified?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          incident_type?: string
+          latitude?: number
+          longitude?: number
+          reported_by?: string | null
+          verified?: boolean | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
