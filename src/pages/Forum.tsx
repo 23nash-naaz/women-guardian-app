@@ -5,15 +5,22 @@ import SOSButton from "@/components/SOSButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { MessageCircle, AlertTriangle } from "lucide-react";
+import { MessageCircle, AlertTriangle, History } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { moderateContent } from "@/utils/moderation";
+import { moderateContent, getModerationHistory } from "@/utils/moderation";
+import { useQuery } from "@tanstack/react-query";
 
 const Forum = () => {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isPosting, setIsPosting] = useState(false);
   const { toast } = useToast();
+
+  // Fetch moderation history
+  const { data: moderationHistory } = useQuery({
+    queryKey: ['moderationHistory'],
+    queryFn: getModerationHistory
+  });
 
   const handlePost = async () => {
     if (!title || !content) {
@@ -29,7 +36,7 @@ const Forum = () => {
     
     try {
       // Check title
-      const titleModeration = await moderateContent(title);
+      const titleModeration = await moderateContent(title, 'forum');
       if (!titleModeration.isSafe) {
         toast({
           title: "Content Warning",
@@ -41,7 +48,7 @@ const Forum = () => {
       }
 
       // Check content
-      const contentModeration = await moderateContent(content);
+      const contentModeration = await moderateContent(content, 'forum');
       if (!contentModeration.isSafe) {
         toast({
           title: "Content Warning",
@@ -53,7 +60,6 @@ const Forum = () => {
       }
 
       // If both checks pass, proceed with posting
-      // Here you would typically save to your backend
       toast({
         title: "Success",
         description: "Your post has been published",
@@ -80,10 +86,16 @@ const Forum = () => {
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h1 className="text-2xl font-bold text-gray-900">Anonymous Forum</h1>
-            <Button>
-              <MessageCircle className="w-4 h-4 mr-2" />
-              New Post
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline">
+                <History className="w-4 h-4 mr-2" />
+                Moderation History
+              </Button>
+              <Button>
+                <MessageCircle className="w-4 h-4 mr-2" />
+                New Post
+              </Button>
+            </div>
           </div>
 
           <Card>
@@ -116,6 +128,37 @@ const Forum = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Recent Moderation History */}
+          {moderationHistory && moderationHistory.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Recent Moderation Activity</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {moderationHistory.map((entry) => (
+                    <div key={entry.id} className="border-b pb-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-500">
+                          {new Date(entry.created_at).toLocaleDateString()}
+                        </span>
+                        <span className={`text-sm ${entry.is_flagged ? 'text-red-500' : 'text-green-500'}`}>
+                          {entry.is_flagged ? 'Flagged' : 'Safe'}
+                        </span>
+                      </div>
+                      <p className="text-sm mt-2">{entry.content_text.substring(0, 100)}...</p>
+                      {entry.flag_reason && (
+                        <p className="text-sm text-red-500 mt-1">
+                          Reason: {entry.flag_reason}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Sample Forum Posts */}
           <div className="space-y-4">
