@@ -9,7 +9,39 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      moderation_history: {
+        Row: {
+          content_source: Database["public"]["Enums"]["content_source"]
+          content_text: string
+          created_at: string | null
+          external_message_id: string | null
+          flag_reason: string | null
+          id: string
+          is_flagged: boolean
+          user_id: string | null
+        }
+        Insert: {
+          content_source: Database["public"]["Enums"]["content_source"]
+          content_text: string
+          created_at?: string | null
+          external_message_id?: string | null
+          flag_reason?: string | null
+          id?: string
+          is_flagged?: boolean
+          user_id?: string | null
+        }
+        Update: {
+          content_source?: Database["public"]["Enums"]["content_source"]
+          content_text?: string
+          created_at?: string | null
+          external_message_id?: string | null
+          flag_reason?: string | null
+          id?: string
+          is_flagged?: boolean
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -18,7 +50,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      content_source: "forum" | "whatsapp" | "twitter"
     }
     CompositeTypes: {
       [_ in never]: never
