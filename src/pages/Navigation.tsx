@@ -18,19 +18,36 @@ const Navigation = () => {
     end?: [number, number];
   }>({});
   const { toast } = useToast();
+  const [apiKey, setApiKey] = useState<string | null>(null);
 
-  const geocodeAddress = async (address: string) => {
-    try {
-      const { data: { secret: apiKey }, error } = await supabase
+  // Fetch API key once at component mount
+  useState(() => {
+    const fetchApiKey = async () => {
+      const { data, error } = await supabase
         .from('secrets')
         .select('secret')
         .eq('name', 'TOMTOM_API_KEY')
-        .single();
+        .maybeSingle();
 
-      if (error || !apiKey) {
-        throw new Error("Could not fetch API key");
+      if (error) {
+        console.error("Error fetching TomTom API key:", error);
+        return;
       }
 
+      if (data) {
+        setApiKey(data.secret);
+      }
+    };
+
+    fetchApiKey();
+  }, []);
+
+  const geocodeAddress = async (address: string) => {
+    if (!apiKey) {
+      throw new Error("API key not available");
+    }
+
+    try {
       const response = await fetch(
         `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(address)}.json?key=${apiKey}`
       );

@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import * as tt from "@tomtom-international/web-sdk-maps";
 import * as ttapi from "@tomtom-international/web-sdk-services";
 import "@tomtom-international/web-sdk-maps/dist/maps.css";
-import { useToast } from "./ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 
 interface SafetyPoint {
   id: string;
@@ -37,21 +37,33 @@ const SafeMap = ({ startPoint, endPoint }: Props) => {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const mapContainer = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const [apiKey, setApiKey] = useState<string | null>(null);
 
+  // Fetch API key once at component mount
   useEffect(() => {
-    const initMap = async () => {
-      if (!mapContainer.current || mapRef.current) return;
-
-      const { data: { secret: apiKey }, error } = await supabase
+    const fetchApiKey = async () => {
+      const { data, error } = await supabase
         .from('secrets')
         .select('secret')
         .eq('name', 'TOMTOM_API_KEY')
-        .single();
+        .maybeSingle();
 
-      if (error || !apiKey) {
+      if (error) {
         console.error("Error fetching TomTom API key:", error);
         return;
       }
+
+      if (data) {
+        setApiKey(data.secret);
+      }
+    };
+
+    fetchApiKey();
+  }, []);
+
+  useEffect(() => {
+    const initMap = async () => {
+      if (!mapContainer.current || mapRef.current || !apiKey) return;
 
       // Initialize TomTom map
       mapRef.current = tt.map({
@@ -85,7 +97,7 @@ const SafeMap = ({ startPoint, endPoint }: Props) => {
       mapRef.current?.remove();
       mapRef.current = null;
     };
-  }, [toast]);
+  }, [apiKey, toast]);
 
   // Calculate route safety score based on nearby safety points and incidents
   const calculateRouteSafety = (coordinates: [number, number][]) => {
@@ -123,34 +135,28 @@ const SafeMap = ({ startPoint, endPoint }: Props) => {
 
   // Draw route on map
   const drawRoute = async () => {
-    if (!mapRef.current || !startPoint || !endPoint) return;
+    if (!mapRef.current || !startPoint || !endPoint || !apiKey) return;
 
     try {
-      const { data: { secret: apiKey }, error } = await supabase
-        .from('secrets')
-        .select('secret')
-        .eq('name', 'TOMTOM_API_KEY')
-        .single();
-
-      if (error || !apiKey) {
-        console.error("Error fetching TomTom API key:", error);
-        return;
-      }
-
       // Calculate route using TomTom API
-      const response = await ttapi.services.calculateRoute({
+      const routeOptions: ttapi.CalculateRouteOptions = {
         key: apiKey,
-        locations: [
+        waypoints: [
           { lat: startPoint[0], lon: startPoint[1] },
           { lat: endPoint[0], lon: endPoint[1] }
         ],
         computeBestOrder: false,
         routeType: 'fastest'
-      });
+      };
 
-      const coordinates = response.routes[0].legs[0].points.map(
-        point => [point.longitude, point.latitude] as [number, number]
-      );
+      const response = await ttapi.services.calculateRoute(routeOptions);
+      
+      if (!response.routes || !response.routes[0]) {
+        throw new Error("No route found");
+      }
+
+      const points = response.routes[0].legs[0].points;
+      const coordinates = points.map(point => [point.lon, point.lat] as [number, number]);
 
       // Calculate safety scores for route points
       const safetyScores = calculateRouteSafety(coordinates);
@@ -254,7 +260,7 @@ const SafeMap = ({ startPoint, endPoint }: Props) => {
     if (startPoint && endPoint) {
       drawRoute();
     }
-  }, [startPoint, endPoint, safetyPoints, incidents]);
+  }, [startPoint, endPoint, safetyPoints, incidents, apiKey]);
 
   return (
     <Card className="p-4">
