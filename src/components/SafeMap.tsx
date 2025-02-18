@@ -26,14 +26,12 @@ const SafeMap = ({ startPoint, endPoint }: Props) => {
       if (!mapRef.current || !startPoint || !endPoint || !apiKey) return;
 
       try {
-        const routeOptions: ttapi.CalculateRouteOptions = {
+        const routeOptions = {
           key: apiKey,
-          waypoints: [
-            { lat: startPoint[0], lon: startPoint[1] },
-            { lat: endPoint[0], lon: endPoint[1] }
-          ],
-          computeBestOrder: false,
-          routeType: 'fastest'
+          locations: [
+            `${startPoint[0]},${startPoint[1]}`,
+            `${endPoint[0]},${endPoint[1]}`
+          ]
         };
 
         const response = await ttapi.services.calculateRoute(routeOptions);
@@ -42,8 +40,10 @@ const SafeMap = ({ startPoint, endPoint }: Props) => {
           throw new Error("No route found");
         }
 
-        const points = response.routes[0].legs[0].points;
-        const coordinates = points.map(point => [point.lon, point.lat] as [number, number]);
+        const coordinates = response.routes[0].legs[0].points.map(
+          point => [point.lon, point.lat] as [number, number]
+        );
+
         const safetyScores = calculateRouteSafety(coordinates, safetyPoints, incidents);
 
         for (let i = 0; i < safetyScores.length - 1; i++) {
