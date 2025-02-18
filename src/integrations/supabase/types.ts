@@ -9,6 +9,41 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      emergency_contacts: {
+        Row: {
+          contact_name: string
+          created_at: string
+          id: string
+          phone_number: string
+          relationship: string | null
+          user_id: string | null
+        }
+        Insert: {
+          contact_name: string
+          created_at?: string
+          id?: string
+          phone_number: string
+          relationship?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          contact_name?: string
+          created_at?: string
+          id?: string
+          phone_number?: string
+          relationship?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "emergency_contacts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       moderation_history: {
         Row: {
           content_source: Database["public"]["Enums"]["content_source"]
@@ -104,6 +139,77 @@ export type Database = {
           verified?: boolean | null
         }
         Relationships: []
+      }
+      user_profiles: {
+        Row: {
+          created_at: string
+          emergency_phrase: string | null
+          full_name: string | null
+          id: string
+          phone_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          emergency_phrase?: string | null
+          full_name?: string | null
+          id: string
+          phone_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          emergency_phrase?: string | null
+          full_name?: string | null
+          id?: string
+          phone_number?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      voice_recordings: {
+        Row: {
+          analysis_results: Json | null
+          analyzed: boolean | null
+          duration: number | null
+          id: string
+          incident_timestamp: string
+          location_lat: number | null
+          location_lng: number | null
+          recording_url: string
+          user_id: string | null
+        }
+        Insert: {
+          analysis_results?: Json | null
+          analyzed?: boolean | null
+          duration?: number | null
+          id?: string
+          incident_timestamp?: string
+          location_lat?: number | null
+          location_lng?: number | null
+          recording_url: string
+          user_id?: string | null
+        }
+        Update: {
+          analysis_results?: Json | null
+          analyzed?: boolean | null
+          duration?: number | null
+          id?: string
+          incident_timestamp?: string
+          location_lat?: number | null
+          location_lng?: number | null
+          recording_url?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_recordings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
