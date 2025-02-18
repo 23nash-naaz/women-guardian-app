@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import { Card } from "./ui/card";
 import { Alert, AlertDescription } from "./ui/alert";
@@ -42,16 +41,11 @@ const SafeMap = ({ startPoint, endPoint }: Props) => {
   // Fetch API key once at component mount
   useEffect(() => {
     const fetchApiKey = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('secrets')
-        .select('secret')
+        .select('*')
         .eq('name', 'TOMTOM_API_KEY')
         .maybeSingle();
-
-      if (error) {
-        console.error("Error fetching TomTom API key:", error);
-        return;
-      }
 
       if (data) {
         setApiKey(data.secret);
@@ -139,14 +133,12 @@ const SafeMap = ({ startPoint, endPoint }: Props) => {
 
     try {
       // Calculate route using TomTom API
-      const routeOptions: ttapi.CalculateRouteOptions = {
+      const routeOptions = {
         key: apiKey,
-        waypoints: [
-          { lat: startPoint[0], lon: startPoint[1] },
-          { lat: endPoint[0], lon: endPoint[1] }
-        ],
-        computeBestOrder: false,
-        routeType: 'fastest'
+        locations: [
+          `${startPoint[0]},${startPoint[1]}`,
+          `${endPoint[0]},${endPoint[1]}`
+        ]
       };
 
       const response = await ttapi.services.calculateRoute(routeOptions);
@@ -155,8 +147,9 @@ const SafeMap = ({ startPoint, endPoint }: Props) => {
         throw new Error("No route found");
       }
 
-      const points = response.routes[0].legs[0].points;
-      const coordinates = points.map(point => [point.lon, point.lat] as [number, number]);
+      const coordinates = response.routes[0].legs[0].points.map(
+        point => [point.longitude, point.latitude] as [number, number]
+      );
 
       // Calculate safety scores for route points
       const safetyScores = calculateRouteSafety(coordinates);

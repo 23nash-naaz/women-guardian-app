@@ -1,5 +1,4 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import SOSButton from "@/components/SOSButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,18 +20,13 @@ const Navigation = () => {
   const [apiKey, setApiKey] = useState<string | null>(null);
 
   // Fetch API key once at component mount
-  useState(() => {
+  useEffect(() => {
     const fetchApiKey = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('secrets')
-        .select('secret')
+        .select('*')
         .eq('name', 'TOMTOM_API_KEY')
         .maybeSingle();
-
-      if (error) {
-        console.error("Error fetching TomTom API key:", error);
-        return;
-      }
 
       if (data) {
         setApiKey(data.secret);
