@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import Navbar from "@/components/Navbar";
 import SOSButton from "@/components/SOSButton";
@@ -6,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { MapPin, Navigation as NavIcon, Shield } from "lucide-react";
 import SafeMap from "@/components/SafeMap";
-import { useToast } from "./ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 const Navigation = () => {
   const [startAddress, setStartAddress] = useState("");
