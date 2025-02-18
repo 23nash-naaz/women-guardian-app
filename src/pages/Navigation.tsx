@@ -1,4 +1,4 @@
-
+import { useState } from "react";
 import Navbar from "@/components/Navbar";
 import SOSButton from "@/components/SOSButton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,8 +6,86 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { MapPin, Navigation as NavIcon, Shield } from "lucide-react";
 import SafeMap from "@/components/SafeMap";
+import { useToast } from "./ui/use-toast";
 
 const Navigation = () => {
+  const [startAddress, setStartAddress] = useState("");
+  const [endAddress, setEndAddress] = useState("");
+  const [routePoints, setRoutePoints] = useState<{
+    start?: [number, number];
+    end?: [number, number];
+  }>({});
+  const { toast } = useToast();
+
+  const geocodeAddress = async (address: string) => {
+    try {
+      const { data: { secret: apiKey }, error } = await supabase
+        .from('secrets')
+        .select('secret')
+        .eq('name', 'TOMTOM_API_KEY')
+        .single();
+
+      if (error || !apiKey) {
+        throw new Error("Could not fetch API key");
+      }
+
+      const response = await fetch(
+        `https://api.tomtom.com/search/2/geocode/${encodeURIComponent(address)}.json?key=${apiKey}`
+      );
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        const { lat, lon } = data.results[0].position;
+        return [lat, lon] as [number, number];
+      }
+      throw new Error("Address not found");
+    } catch (error) {
+      console.error("Geocoding error:", error);
+      throw error;
+    }
+  };
+
+  const handleFindRoute = async () => {
+    try {
+      const [startCoords, endCoords] = await Promise.all([
+        geocodeAddress(startAddress),
+        geocodeAddress(endAddress)
+      ]);
+
+      setRoutePoints({
+        start: startCoords,
+        end: endCoords
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Could not find one or both addresses. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCurrentLocation = () => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setStartAddress("Current Location");
+        setRoutePoints(prev => ({
+          ...prev,
+          start: [latitude, longitude]
+        }));
+      },
+      (error) => {
+        console.error("Error getting location:", error);
+        toast({
+          title: "Location Error",
+          description: "Could not get your current location.",
+          variant: "destructive",
+        });
+      }
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
@@ -15,7 +93,7 @@ const Navigation = () => {
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h1 className="text-2xl font-bold text-gray-900">Safe Navigation</h1>
-            <Button variant="outline">
+            <Button variant="outline" onClick={handleCurrentLocation}>
               <MapPin className="w-4 h-4 mr-2" />
               Current Location
             </Button>
@@ -31,17 +109,32 @@ const Navigation = () => {
             <CardContent>
               <div className="space-y-4">
                 <div className="grid gap-4">
-                  <Input placeholder="Starting point" />
-                  <Input placeholder="Destination" />
+                  <Input 
+                    placeholder="Starting point" 
+                    value={startAddress}
+                    onChange={(e) => setStartAddress(e.target.value)}
+                  />
+                  <Input 
+                    placeholder="Destination"
+                    value={endAddress}
+                    onChange={(e) => setEndAddress(e.target.value)}
+                  />
                 </div>
-                <Button className="w-full">
+                <Button 
+                  className="w-full"
+                  onClick={handleFindRoute}
+                  disabled={!startAddress || !endAddress}
+                >
                   Find Safest Route
                 </Button>
               </div>
             </CardContent>
           </Card>
 
-          <SafeMap />
+          <SafeMap 
+            startPoint={routePoints.start} 
+            endPoint={routePoints.end}
+          />
 
           <div className="grid gap-6 md:grid-cols-2">
             <Card>

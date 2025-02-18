@@ -4,8 +4,9 @@ import { Card } from "./ui/card";
 import { Alert, AlertDescription } from "./ui/alert";
 import { AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
+import * as tt from "@tomtom-international/web-sdk-maps";
+import * as ttapi from "@tomtom-international/web-sdk-services";
+import "@tomtom-international/web-sdk-maps/dist/maps.css";
 import { useToast } from "./ui/use-toast";
 
 interface SafetyPoint {
@@ -25,38 +26,60 @@ interface Incident {
   created_at: string;
 }
 
-const SafeMap = () => {
-  const mapRef = useRef<L.Map | null>(null);
+interface Props {
+  startPoint?: [number, number];
+  endPoint?: [number, number];
+}
+
+const SafeMap = ({ startPoint, endPoint }: Props) => {
+  const mapRef = useRef<tt.Map | null>(null);
   const [safetyPoints, setSafetyPoints] = useState<SafetyPoint[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const mapContainer = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!mapContainer.current || mapRef.current) return;
+    const initMap = async () => {
+      if (!mapContainer.current || mapRef.current) return;
 
-    // Initialize map
-    mapRef.current = L.map(mapContainer.current).setView([51.505, -0.09], 13);
+      const { data: { secret: apiKey }, error } = await supabase
+        .from('secrets')
+        .select('secret')
+        .eq('name', 'TOMTOM_API_KEY')
+        .single();
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(mapRef.current);
-
-    // Get user's location
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        mapRef.current?.setView([latitude, longitude], 15);
-      },
-      (error) => {
-        console.error("Error getting location:", error);
-        toast({
-          title: "Location Error",
-          description: "Could not get your current location. Using default view.",
-          variant: "destructive",
-        });
+      if (error || !apiKey) {
+        console.error("Error fetching TomTom API key:", error);
+        return;
       }
-    );
+
+      // Initialize TomTom map
+      mapRef.current = tt.map({
+        key: apiKey,
+        container: mapContainer.current,
+        center: [0, 0],
+        zoom: 13,
+        style: 'main'
+      });
+
+      // Get user's location
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          mapRef.current?.setCenter([longitude, latitude]);
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+          toast({
+            title: "Location Error",
+            description: "Could not get your current location. Using default view.",
+            variant: "destructive",
+          });
+        }
+      );
+    };
+
+    initMap();
 
     return () => {
       mapRef.current?.remove();
@@ -64,108 +87,182 @@ const SafeMap = () => {
     };
   }, [toast]);
 
+  // Calculate route safety score based on nearby safety points and incidents
+  const calculateRouteSafety = (coordinates: [number, number][]) => {
+    return coordinates.map(([lng, lat]) => {
+      const nearbyPoints = safetyPoints.filter(point => {
+        const distance = Math.sqrt(
+          Math.pow(point.longitude - lng, 2) + 
+          Math.pow(point.latitude - lat, 2)
+        );
+        return distance < 0.01; // Roughly 1km radius
+      });
+
+      const nearbyIncidents = incidents.filter(incident => {
+        const distance = Math.sqrt(
+          Math.pow(incident.longitude - lng, 2) + 
+          Math.pow(incident.latitude - lat, 2)
+        );
+        return distance < 0.01;
+      });
+
+      // Calculate safety score
+      const avgSafetyScore = nearbyPoints.length > 0 
+        ? nearbyPoints.reduce((acc, point) => acc + point.safety_score, 0) / nearbyPoints.length 
+        : 70; // Default safety score if no data
+
+      // Reduce safety score based on nearby incidents
+      const finalScore = Math.max(0, avgSafetyScore - (nearbyIncidents.length * 10));
+
+      return {
+        coordinate: [lng, lat],
+        safetyScore: finalScore
+      };
+    });
+  };
+
+  // Draw route on map
+  const drawRoute = async () => {
+    if (!mapRef.current || !startPoint || !endPoint) return;
+
+    try {
+      const { data: { secret: apiKey }, error } = await supabase
+        .from('secrets')
+        .select('secret')
+        .eq('name', 'TOMTOM_API_KEY')
+        .single();
+
+      if (error || !apiKey) {
+        console.error("Error fetching TomTom API key:", error);
+        return;
+      }
+
+      // Calculate route using TomTom API
+      const response = await ttapi.services.calculateRoute({
+        key: apiKey,
+        locations: [
+          { lat: startPoint[0], lon: startPoint[1] },
+          { lat: endPoint[0], lon: endPoint[1] }
+        ],
+        computeBestOrder: false,
+        routeType: 'fastest'
+      });
+
+      const coordinates = response.routes[0].legs[0].points.map(
+        point => [point.longitude, point.latitude] as [number, number]
+      );
+
+      // Calculate safety scores for route points
+      const safetyScores = calculateRouteSafety(coordinates);
+
+      // Draw route segments with color based on safety score
+      for (let i = 0; i < safetyScores.length - 1; i++) {
+        const color = safetyScores[i].safetyScore > 60 ? '#FFD700' : '#FF0000';
+        
+        const lineString: GeoJSON.Feature = {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              safetyScores[i].coordinate,
+              safetyScores[i + 1].coordinate
+            ]
+          }
+        };
+
+        if (mapRef.current.getLayer(`route-segment-${i}`)) {
+          mapRef.current.removeLayer(`route-segment-${i}`);
+          mapRef.current.removeSource(`route-segment-${i}`);
+        }
+
+        mapRef.current.addLayer({
+          id: `route-segment-${i}`,
+          type: 'line',
+          source: {
+            type: 'geojson',
+            data: lineString
+          },
+          paint: {
+            'line-color': color,
+            'line-width': 6
+          }
+        });
+      }
+
+      // Fit map to show entire route
+      const bounds = new tt.LngLatBounds();
+      coordinates.forEach(coord => bounds.extend(coord as tt.LngLatLike));
+      mapRef.current.fitBounds(bounds, { padding: 50 });
+
+    } catch (error) {
+      console.error("Error calculating route:", error);
+      toast({
+        title: "Route Error",
+        description: "Could not calculate the route. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Fetch safety data
   useEffect(() => {
-    // Fetch initial safety points
-    const fetchSafetyPoints = async () => {
-      const { data, error } = await supabase
-        .from("route_safety_points")
-        .select("*");
+    const fetchSafetyData = async () => {
+      const [safetyPointsRes, incidentsRes] = await Promise.all([
+        supabase.from("route_safety_points").select("*"),
+        supabase.from("safety_incidents").select("*").eq("verified", true)
+      ]);
 
-      if (error) {
-        console.error("Error fetching safety points:", error);
+      if (safetyPointsRes.error) {
+        console.error("Error fetching safety points:", safetyPointsRes.error);
         return;
       }
 
-      setSafetyPoints(data);
-    };
-
-    // Fetch initial incidents
-    const fetchIncidents = async () => {
-      const { data, error } = await supabase
-        .from("safety_incidents")
-        .select("*")
-        .eq("verified", true);
-
-      if (error) {
-        console.error("Error fetching incidents:", error);
+      if (incidentsRes.error) {
+        console.error("Error fetching incidents:", incidentsRes.error);
         return;
       }
 
-      setIncidents(data);
+      setSafetyPoints(safetyPointsRes.data);
+      setIncidents(incidentsRes.data);
     };
 
-    fetchSafetyPoints();
-    fetchIncidents();
+    fetchSafetyData();
 
     // Subscribe to real-time updates
-    const safetyChannel = supabase
+    const channel = supabase
       .channel("safety-updates")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "route_safety_points" },
-        (payload) => {
-          console.log("Safety point update:", payload);
-          fetchSafetyPoints(); // Refresh safety points
-        }
+        () => fetchSafetyData()
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "safety_incidents" },
-        (payload) => {
-          console.log("Incident update:", payload);
-          fetchIncidents(); // Refresh incidents
-        }
+        () => fetchSafetyData()
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(safetyChannel);
+      supabase.removeChannel(channel);
     };
   }, []);
 
-  // Update markers when data changes
+  // Update route when points change or safety data updates
   useEffect(() => {
-    if (!mapRef.current) return;
-
-    // Clear existing layers
-    mapRef.current.eachLayer((layer) => {
-      if (layer instanceof L.Marker || layer instanceof L.Circle) {
-        layer.remove();
-      }
-    });
-
-    // Add safety points
-    safetyPoints.forEach((point) => {
-      const color = point.safety_score > 70 ? "green" : 
-                   point.safety_score > 40 ? "yellow" : "red";
-      
-      L.circle([point.latitude, point.longitude], {
-        color,
-        fillColor: color,
-        fillOpacity: 0.2,
-        radius: 100
-      }).addTo(mapRef.current!);
-    });
-
-    // Add incident markers
-    incidents.forEach((incident) => {
-      L.marker([incident.latitude, incident.longitude])
-        .bindPopup(`
-          <strong>${incident.incident_type}</strong><br>
-          ${incident.description}<br>
-          <small>Reported: ${new Date(incident.created_at).toLocaleString()}</small>
-        `)
-        .addTo(mapRef.current!);
-    });
-  }, [safetyPoints, incidents]);
+    if (startPoint && endPoint) {
+      drawRoute();
+    }
+  }, [startPoint, endPoint, safetyPoints, incidents]);
 
   return (
     <Card className="p-4">
       <div className="space-y-4">
-        <Alert variant="warning">
+        <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            Safety information is updated in real-time. Areas marked in red should be avoided.
+            Routes are color-coded based on safety: Yellow for safer areas, Red for areas with reported incidents.
           </AlertDescription>
         </Alert>
         <div ref={mapContainer} className="h-[500px] w-full rounded-lg" />
